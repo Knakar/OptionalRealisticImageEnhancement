@@ -33,7 +33,6 @@ parser.add_argument('--init_amplify_weights', default=None)
 
 parser.add_argument('--rgb_root', required=True)
 parser.add_argument('--mask_root', required=True)
-parser.add_argument('--result_for_decrease', type=int, default=1)
 
 parser.add_argument('--result_path', default='./results/mydataset')
 
