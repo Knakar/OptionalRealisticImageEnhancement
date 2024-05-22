@@ -42,10 +42,6 @@ if __name__ == '__main__':
     
     trainer = EditNetTrainer(args)
 
-    pick_strategy_list = ['random', 'best_realism' , 'best_saliency']
-    for pick_strategy in pick_strategy_list:
-        os.makedirs(os.path.join(result_root, 'picked_{}'.format(pick_strategy)), exist_ok=True)
-
     trainer.setEval()
 
     for episode,data in enumerate(dataloader_val):
@@ -56,41 +52,11 @@ if __name__ == '__main__':
         
         trainer.setinput_hr(data)
 
-        sal_list = []
-        realism_list = []
         result_list = []
         with torch.inference_mode():
             for result in trainer.forward_allperm_hr():
-                sal_list.append(result[2])
-                realism_list.append(result[1])
                 edited = (result[6][0,].transpose(1,2,0)[:,:,::-1] * 255).astype('uint8')
                 result_list.append(edited.copy())
 
-        sal_list = [np.asscalar(item) for item in sal_list]
-        realism_list = [np.asscalar(item) for item in realism_list]
-
-        # Do the pick
-        picked_list = []
-        for pick_strategy in pick_strategy_list:
-            if pick_strategy == 'random':
-                picked_ind = random.randint(0, len(sal_list)-1)
-            elif pick_strategy == 'best_realism':
-                picked_ind = np.argmin(realism_list)
-            elif pick_strategy == 'best_saliency':
-                if args.result_for_decrease == 1:
-                    picked_ind = np.argmin(sal_list)
-                else:
-                    picked_ind = np.argmax(sal_list)
-
-            picked_list.append(picked_ind)
-            # save picked result
-            picked = result_list[picked_ind]
-            picked_name = os.path.join('picked_{}'.format(pick_strategy),image_name) 
-            cv2.imwrite(os.path.join(result_root, picked_name), picked)
-
-    
-                
-
-
-
-
+        for i, result in enumerate(result_list):
+            cv2.imwrite(os.path.join(result_root, 'result_{}_{}'.format(i,image_name)), result)
