@@ -52,7 +52,7 @@ python test.py --mask_root "$mask_root" --rgb_root "$rgb_root" --result_path "$r
 ```
 
 ## todo
-- [] load both weights(attention, amplification)
+- [x] load both weights(attention, amplification)
     - argumentparser.py:: argument name: attenuate_weight, amplify_weight
 - [] update image loading
     - [] change timing of initial weight loading
