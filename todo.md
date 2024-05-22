@@ -17,11 +17,11 @@ project_root/
 ### after(proposal)
 project_root/
 - mask_inputs/
-    - image1/
+    - image1.jpg/
         - mask1_attenuation.jpg
         - mask2_amplification.jpg
         - \*(attenuation|amplification).jpg
-    - image2/
+    - image2.jpg/
         - mask1_attenuation
         - mask2_amplification
         - \*(attenuation|amplification).jpg
@@ -71,7 +71,8 @@ python test.py --mask_root "$mask_root" --rgb_root "$rgb_root" --result_path "$r
 
 - Adapt the mask to each (amplify|attenuate) image.
     - $(Total number of generated images)=(input mask)^{(batch size)}$
-
+## Future works
+- Evaluating Realism and Saliency of the generated images
 ## Citation
 ```
 
