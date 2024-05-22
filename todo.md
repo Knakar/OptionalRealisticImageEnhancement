@@ -48,7 +48,7 @@ result_root="././result/mydataset" # path to results
 python test.py --mask_root "$mask_root" --rgb_root "$rgb_root" --result_path "$result_path" \
     --init_attenuate_weights "bestmodels/editnet_attenuate.pth" \
     --init_amplify-weights "bestmodels/editnet_amplify.pth" \
-    --result_for_decrease 1 --batch_size 1
+    --batch_size 1
 ```
 
 ## todo
@@ -69,6 +69,7 @@ python test.py --mask_root "$mask_root" --rgb_root "$rgb_root" --result_path "$r
                 edit_image(images, masks):
                     ...
 
+- [x] update: save all edited image
 - Adapt the mask to each (amplify|attenuate) image.
     - $(Total number of generated images)=(input mask)^{(batch size)}$
 ## Future works
