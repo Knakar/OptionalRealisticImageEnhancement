@@ -51,22 +51,29 @@ python test.py --mask_root "$mask_root" --rgb_root "$rgb_root" --result_path "$r
     --result_for_decrease 1 --batch_size 1
 ```
 
+## survey
+- Realism score and Saliency score are evaluated for the mask part.[maybe]
+    - [] check the paper page 3
+- load the image at AnyDataset
+
 ## todo
 - [x] load both weights(attention, amplification)
     - argumentparser.py:: argument name: attenuate_weight, amplify_weight
 - [] update image loading
     - [] change timing of initial weight loading
-        - [] change timing of dataloder
+        - [] change timing of dataloader
+            - [] load images one by one: anydataset.py::36
     - [] load image from rgb_inputs
     - [] load image from mask_inputs
 - [] detect mask inputs attenuation or amplification
 - [] edit(attenuate or amplify) the image from mask inputs
     - use recursive function
-        - def edit_image(images, masks?):
+        - def edit_image(images, masks, saliencies, realism):
+            # amplify or attenuate the image
             // some code
-            if(masks is not None):
-                // some code
-                edit_image(images, masks):
+            # Calculate the product of Realism and saliency scores
+            if(masks):
+                edit_image(images, masks, saliencies, realism):
                     ...
 
 - Adapt the mask to each (amplify|attenuate) image.
