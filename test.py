@@ -67,9 +67,9 @@ if __name__ == '__main__':
 
         print('({}/{})'.format(episode+1, len(dataloader_val)), '----->', image_name)
 
-        if image_name.endswith("amplification"):
+        if image_name.endswith("amplification.jpg"):
             trainer = amplification_trainer
-        elif image_name.endswith("attenuation"):
+        elif image_name.endswith("attenuation.jpg"):
             trainer = attenuation_trainer
         else:
             trainer = None
