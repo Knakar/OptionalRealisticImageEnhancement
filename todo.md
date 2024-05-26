@@ -28,11 +28,18 @@ project_root/
 - rgb_inputs/
     - image1.jpg
     - image2.jpg
+    - \*.jpg
 - results/
     - mydataset/
-        - amplification/
+        - realism/
+            - image1_{score}.jpg
+            - image2_{score}.jpg
+            - \*_{score}.jpg
             ...
-        - attenuation/
+        - saliency/
+            - image1_{score}.jpg
+            - image2_{score}.jpg
+            - \*_{score}.jpg
             ...
 
 ## how to run
@@ -65,7 +72,7 @@ python test.py --mask_root "$mask_root" --rgb_root "$rgb_root" --result_path "$r
             - [] load images one by one: anydataset.py::36
     - [] load image from rgb_inputs
     - [] load image from mask_inputs
-- [] detect mask inputs attenuation or amplification
+- [x] detect mask inputs attenuation or amplification
 - [] edit(attenuate or amplify) the image from mask inputs
     - use recursive function
         - def edit_image(images, masks, saliencies, realism):

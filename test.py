@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 from argumentsparser import args
 import random
+import copy
 
 
 from model.editnettrainer import EditNetTrainer
@@ -39,21 +40,40 @@ if __name__ == '__main__':
     direction_str = 'attenuation' if args.result_for_decrease else 'amplification'
     result_root = os.path.join(args.result_path, direction_str)
     os.makedirs(result_root, exist_ok=True)
-    
-    trainer = EditNetTrainer(args)
 
-    pick_strategy_list = ['random', 'best_realism' , 'best_saliency']
+    # amplification trainer
+    args.init_parameters_weights = args.init_amplify_weights
+    args.result_for_decrease = 0
+    amplification_args = copy.deepcopy(args)
+    amplification_trainer = EditNetTrainer(amplification_args)
+
+    # attenuation trainer
+    args.init_parameters_weights = args.init_attenuate_weights
+    args.result_for_decrease = 1
+    attenuation_args = copy.deepcopy(args)
+    attenuation_trainer = EditNetTrainer(attenuation_args)
+
+    attenuation_trainer.setEval()
+    amplification_trainer.setEval()
+
+    pick_strategy_list = ['others', 'best_realism' , 'best_saliency']
     for pick_strategy in pick_strategy_list:
         os.makedirs(os.path.join(result_root, 'picked_{}'.format(pick_strategy)), exist_ok=True)
 
-    trainer.setEval()
 
     for episode,data in enumerate(dataloader_val):
         mask_path = data['path'][0]
         image_name =  mask_path.split('/')[-1].split('.')[0]+'.jpg'
 
         print('({}/{})'.format(episode+1, len(dataloader_val)), '----->', image_name)
-        
+
+        if image_name.endswith("amplification"):
+            trainer = amplification_trainer
+        elif image_name.endswith("attenuation"):
+            trainer = attenuation_trainer
+        else:
+            trainer = None
+
         trainer.setinput_hr(data)
 
         sal_list = []
@@ -66,8 +86,8 @@ if __name__ == '__main__':
                 edited = (result[6][0,].transpose(1,2,0)[:,:,::-1] * 255).astype('uint8')
                 result_list.append(edited.copy())
 
-        sal_list = [np.asscalar(item) for item in sal_list]
-        realism_list = [np.asscalar(item) for item in realism_list]
+        sal_list = [np.asarray(item).item() for item in sal_list]
+        realism_list = [np.asarray(item).item() for item in realism_list]
 
         # Do the pick
         picked_list = []
