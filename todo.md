@@ -17,14 +17,16 @@ project_root/
 ### after(proposal)
 project_root/
 - mask_inputs/
-    - image1/
+    - image1.jpg/
         - mask1_attenuation.jpg
         - mask2_amplification.jpg
         - \*(attenuation|amplification).jpg
-    - image2/
-        - mask1_attenuation
-        - mask2_amplification
+    - image2.jpg/
+        - mask1_attenuation.jpg
+        - mask2_amplification.jpg
         - \*(attenuation|amplification).jpg
+    - \*.jpg/
+        ...
 - rgb_inputs/
     - image1.jpg
     - image2.jpg
@@ -67,13 +69,13 @@ python test.py --mask_root "$mask_root" --rgb_root "$rgb_root" --result_path "$r
 - [x] load both weights(attention, amplification)
     - argumentparser.py:: argument name: attenuate_weight, amplify_weight
 - [] update image loading
-    - [] change timing of initial weight loading
-        - [] change timing of dataloader
+    - [x] change timing of initial weight loading
+        - [x] change timing of dataloader
             - [] load images one by one: change anydataset.py
-    - [] load image from rgb_inputs
-    - [] load image from mask_inputs
+                - [] load image from rgb_inputs
+                - [] load image from mask_inputs
 - [x] detect mask inputs attenuation or amplification
-- [] edit(attenuate or amplify) the image from mask inputs
+- [x] edit(attenuate or amplify) the image from mask inputs
     - use recursive function
         - def edit_image(images, masks, saliencies, realism):
             # amplify or attenuate the image
@@ -84,7 +86,7 @@ python test.py --mask_root "$mask_root" --rgb_root "$rgb_root" --result_path "$r
                     ...
 
 - Adapt the mask to each (amplify|attenuate) image.
-    - $(Total number of generated images)=(input mask)^{(batch size)}$
+    - $(Total number of generated images)=(input mask)^{(Number of operations to choose from)}$
 
 ## Citation
 ```
