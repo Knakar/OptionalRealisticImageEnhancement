@@ -2,7 +2,7 @@
 ### before(forked code)
 project_root/
 - mask_inputs/
-    - mask1.jpg
+    - image1.jpg
     - image2.jpg
 - rgb_inputs/
     - image1.jpg
@@ -69,7 +69,7 @@ python test.py --mask_root "$mask_root" --rgb_root "$rgb_root" --result_path "$r
 - [] update image loading
     - [] change timing of initial weight loading
         - [] change timing of dataloader
-            - [] load images one by one: anydataset.py::36
+            - [] load images one by one: change anydataset.py
     - [] load image from rgb_inputs
     - [] load image from mask_inputs
 - [x] detect mask inputs attenuation or amplification
