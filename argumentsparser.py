@@ -28,7 +28,8 @@ parser.add_argument('--w_sal',type=float, default=5)
 parser.add_argument('--human_weight_gan', type=float, default=10)
 parser.add_argument('--sal_loss_type', choices=['percentage','percentage_increase'], default='percentage')
 
-parser.add_argument('--init_parameternet_weights', default=None)
+parser.add_argument('--init_attenuate_weights', default=None)
+parser.add_argument('--init_amplify_weights', default=None)
 
 parser.add_argument('--rgb_root', required=True)
 parser.add_argument('--mask_root', required=True)
