@@ -69,6 +69,8 @@ def modulate_image(image: Image, masks, realism, saliency):
             realisms.extend(ret_realism)
         else:
             results.append(img)
+            saliencies.append(temp_saliencies[i])
+            realisms.append(temp_realisms[i])
 
     return results, saliencies, realisms
 
