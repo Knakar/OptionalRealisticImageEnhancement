@@ -50,7 +50,7 @@ first, Download our model weights from [here](https://drive.google.com/file/d/1N
 ```bash
 rgb_root="" # path to rgb_inputs
 mask_root="" # path to mask_inputs
-result_root="././result/mydataset" # path to results
+result_root="./result/mydataset" # path to results
 ```
 
 ```bash
@@ -60,7 +60,7 @@ python test.py --mask_root "$mask_root" --rgb_root "$rgb_root" --result_path "$r
     --result_for_decrease 1 --batch_size 1
 ```
 
-## survey
+## todo: survey
 - Realism score and Saliency score are evaluated for the mask part.[maybe]
     - [] check the paper page 3
 - load the image at AnyDataset
@@ -68,19 +68,19 @@ python test.py --mask_root "$mask_root" --rgb_root "$rgb_root" --result_path "$r
 ## todo
 - [x] load both weights(attention, amplification)
     - argumentparser.py:: argument name: attenuate_weight, amplify_weight
-- [] update image loading
+- [x] update image loading
     - [x] change timing of initial weight loading
         - [x] change timing of dataloader
-            - [] load images one by one: change anydataset.py
-                - [] load image from rgb_inputs
-                - [] load image from mask_inputs
+            - [x] load images one by one: change anydataset.py
+                - [x] load image from rgb_inputs
+                - [x] load image from mask_inputs
 - [x] detect mask inputs attenuation or amplification
 - [x] edit(attenuate or amplify) the image from mask inputs
     - use recursive function
         - def edit_image(images, masks, saliencies, realism):
-            # amplify or attenuate the image
+            \# amplify or attenuate the image
             // some code
-            # Calculate the product of Realism and saliency scores
+            \# Calculate the product of Realism and saliency scores
             if(masks):
                 edit_image(images, masks, saliencies, realism):
                     ...
