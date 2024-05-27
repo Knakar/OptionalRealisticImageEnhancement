@@ -1,3 +1,5 @@
+import copy
+
 import torch
 import torchvision.transforms as transforms
 
@@ -9,7 +11,7 @@ class AnyDataset:
     def __init__(self, args, base: Image, mask: Image):
         self.args = args
 
-        self.base = base
+        self.base:Image = copy.deepcopy(base)
         self.mask = mask
 
         opt = {}
@@ -22,12 +24,15 @@ class AnyDataset:
         self.mask_transform = get_transform(opt, grayscale=True)
         self.org_transform = transforms.Compose([transforms.ToTensor()])
 
+    def __len__(self):
+        return 1
+
     def __getitem__(self, index_):
 
         rgb_img = self.base
         mask_img = self.mask
 
-        mask_img = mask_img.resize((rgb_img.size),Image.NEAREST)
+        mask_img = mask_img.resize(tuple(self.base.size),Image.Resampling.NEAREST)
 
         rgb = self.rgb_transform(rgb_img)
         mask = self.mask_transform(mask_img)

@@ -51,7 +51,7 @@ first, Download our model weights from [here](https://drive.google.com/file/d/1N
 ```bash
 rgb_root="" # path to rgb_inputs
 mask_root="" # path to mask_inputs
-result_root="./result/mydataset" # path to results
+result_path="./result/mydataset" # path to results
 ```
 
 ```bash

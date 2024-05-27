@@ -6,7 +6,7 @@ from argumentsparser import args
 import random
 import copy
 from PIL import Image
-
+import gc
 
 from model.editnettrainer import EditNetTrainer
 from dataloader.anydataset import AnyDataset
@@ -29,7 +29,7 @@ def modulate_image(image: Image, masks, realism, saliency):
     """
     mask_path = masks.pop()
     mask_name = mask_path.split('/')[-1]
-    mask = Image.open(mask_path).convert("RGB")
+    mask = Image.open(mask_path)
     datasets = AnyDataset(args, image, mask)
     dataloader_val = torch.utils.data.DataLoader(
         datasets,
@@ -39,31 +39,34 @@ def modulate_image(image: Image, masks, realism, saliency):
         pin_memory=True,
         drop_last=True
     )
-    print(f'(masks:\t{len(masks)}/{len(mask_paths)}\timages:\t{episode}/{image_paths})', '----->', mask_name)
+    data = next(iter(dataloader_val))
+    print(f'(masks:\t{len(mask_paths)-len(masks)}/{len(mask_paths)+1}\timages:\t{episode+1}/{len(image_names)}) {mask_name}', '----->', image_name)
     if mask_name.endswith("amplification.jpg"):
         trainer = amplification_trainer
     elif mask_name.endswith("attenuation.jpg"):
         trainer = attenuation_trainer
     else:
         trainer = None
-    trainer.setinput_hr(dataloader_val)
+    trainer.setinput_hr(data)
     temp_saliencies = []
     temp_realisms = []
     temp_images = []
     with torch.inference_mode():
         for result in trainer.forward_allperm_hr():
-            saliency *= result[2]; temp_saliencies.append(saliency.item())
-            realism *= result[1]; temp_realisms.append(realism.item())
+            saliency *= 1-(result[2].item()) if args.result_for_decrease else result[2].item(); temp_saliencies.append(saliency)
+            realism *= result[1].item(); temp_realisms.append(realism)
 
-            edited = (result[6][0,].transpose(1,2,0)[:,:,::-1] * 255).astype('uint8')
+            edited = (result[6][0,].transpose(1,2,0) * 255).astype('uint8')
             temp_images.append(edited.copy())
-    del datasets, dataloader_val
+    del datasets, dataloader_val, data
+    gc.collect()
+    torch.cuda.empty_cache()
     results = []
     saliencies = []
     realisms = []
     for i, img in enumerate(temp_images):
         if masks:
-            ret_image, ret_saliency, ret_realism = modulate_image(img, copy.deepcopy(masks), temp_realisms[i], temp_saliencies[i])
+            ret_image, ret_saliency, ret_realism = modulate_image(Image.fromarray(img, "RGB"), copy.deepcopy(masks), temp_realisms[i], temp_saliencies[i])
             results.extend(ret_image)
             saliencies.extend(ret_saliency)
             realisms.extend(ret_realism)
@@ -92,19 +95,20 @@ if len(args.gpu_ids) > 0:
 
 if __name__ == '__main__':
 
-     # get images path
-    image_paths = sorted([path for path in os.listdir(args.rgb_root) if path.endswith('.jpg')])
+     # get images names
+    image_names = sorted([path for path in os.listdir(args.rgb_root) if path.endswith('.jpg')])
 
     result_root = args.result_path
     os.makedirs(result_root, exist_ok=True)
 
     # amplification trainer
-    args.init_parameters_weights = args.init_amplify_weights
+    setattr(args, "init_parameternet_weights", args.init_amplify_weights)
     args.result_for_decrease = 0
     amplification_args = copy.deepcopy(args)
     amplification_trainer = EditNetTrainer(amplification_args)
 
     # attenuation trainer
+    setattr(args, "init_parameter_weights", args.init_attenuate_weights)
     args.init_parameters_weights = args.init_attenuate_weights
     args.result_for_decrease = 1
     attenuation_args = copy.deepcopy(args)
@@ -113,13 +117,13 @@ if __name__ == '__main__':
     attenuation_trainer.setEval()
     amplification_trainer.setEval()
 
-    pick_strategy_list = ['ramdom', 'best_realism' , 'best_saliency']
+    pick_strategy_list = ['random', 'best_realism' , 'best_saliency']
     for pick_strategy in pick_strategy_list:
         os.makedirs(os.path.join(result_root, 'picked_{}'.format(pick_strategy)), exist_ok=True)
 
-    for episode, image_path in enumerate(image_paths):
-        image_name = image_path.split('.')[0]+'.jpg'
-        mask_root = os.path.join(args.mask_root, image_path.split('.')[0])
+    for episode, image_name in enumerate(image_names):
+        image_path = os.path.join(args.rgb_root,image_name.split('.')[0]+'.jpg')
+        mask_root = os.path.join(args.mask_root, image_name.split('.')[0])
         image: Image = Image.open(image_path).convert("RGB")
         mask_paths = [os.path.join(mask_root, f) for f in os.listdir(mask_root) if f.endswith('.jpg')]
         results, saliencies, realisms = modulate_image(image, mask_paths, 1.0, 1.0)
@@ -136,14 +140,20 @@ if __name__ == '__main__':
                     picked_idx = np.argmin(saliencies)
                 else:
                     picked_idx = np.argmax(saliencies)
-            else:
-                picked_idx = None
+
 
             picked_list.append(picked_idx)
             # save picked result
             picked = results[picked_idx]
+            picked = cv2.cvtColor(picked, cv2.COLOR_RGB2BGR)
             picked_name = os.path.join('picked_{}'.format(pick_strategy),image_name)
             cv2.imwrite(os.path.join(result_root, picked_name), picked)
+
+        #save all results
+        for idx, result in enumerate(results):
+            result_name = os.path.join('all', image_name.split('.')[0] + '_{}.jpg'.format(idx))
+            result = cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(os.path.join(result_root, result_name), result)
 
 
 
