@@ -17,16 +17,17 @@ project_root/
 ### after(proposal)
 project_root/
 - mask_inputs/
-    - image1.jpg/
+    - image1/
         - mask1_attenuation.jpg
         - mask2_amplification.jpg
         - \*(attenuation|amplification).jpg
-    - image2.jpg/
+    - image2/
         - mask1_attenuation.jpg
         - mask2_amplification.jpg
         - \*(attenuation|amplification).jpg
-    - \*.jpg/
-        ...
+    - \*/
+        - \*(annenuation|amplification).jpg
+    ...
 - rgb_inputs/
     - image1.jpg
     - image2.jpg
@@ -57,7 +58,7 @@ result_root="./result/mydataset" # path to results
 python test.py --mask_root "$mask_root" --rgb_root "$rgb_root" --result_path "$result_path" \
     --init_attenuate_weights "bestmodels/editnet_attenuate.pth" \
     --init_amplify-weights "bestmodels/editnet_amplify.pth" \
-    --result_for_decrease 1 --batch_size 1
+    --batch_size 1
 ```
 
 ## todo: survey

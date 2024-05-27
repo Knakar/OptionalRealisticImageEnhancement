@@ -119,7 +119,7 @@ if __name__ == '__main__':
 
     for episode, image_path in enumerate(image_paths):
         image_name = image_path.split('.')[0]+'.jpg'
-        mask_root = os.path.join(args.mask_root, image_name)
+        mask_root = os.path.join(args.mask_root, image_path.split('.')[0])
         image: Image = Image.open(image_path).convert("RGB")
         mask_paths = [os.path.join(mask_root, f) for f in os.listdir(mask_root) if f.endswith('.jpg')]
         results, saliencies, realisms = modulate_image(image, mask_paths, 1.0, 1.0)
