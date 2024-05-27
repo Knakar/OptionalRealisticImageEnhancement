@@ -57,7 +57,7 @@ result_root="./result/mydataset" # path to results
 ```bash
 python test.py --mask_root "$mask_root" --rgb_root "$rgb_root" --result_path "$result_path" \
     --init_attenuate_weights "bestmodels/editnet_attenuate.pth" \
-    --init_amplify-weights "bestmodels/editnet_amplify.pth" \
+    --init_amplify_weights "bestmodels/editnet_amplify.pth" \
     --batch_size 1
 ```
 
