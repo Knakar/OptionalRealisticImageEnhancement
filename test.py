@@ -12,20 +12,17 @@ from model.editnettrainer import EditNetTrainer
 from dataloader.anydataset import AnyDataset
 
 
-def modulate_image(image: Image, masks, realism, saliency):
+def modulate_image(image: Image, masks):
     """
-    Modulate the image with masks, and calculate realisms, and saliencies.
+    Modulate the image with masks, and calculate realism, and saliency.
 
     Args:
         image (Image): The image.
         masks (List[np.ndarray]): The masks.
-        realism (float): The realism.
-        saliency (float): The saliency.
 
     Returns:
-        List[np.ndarray]: The modulated images.
-        List[float]: The modulated realisms.
-        List[float]: The modulated saliencies.
+        np.ndarray: The modulated images( the best realism).
+        np.ndarray: The modulated images( the best saliency).
     """
     mask_path = masks.pop()
     mask_name = mask_path.split('/')[-1]
@@ -53,29 +50,29 @@ def modulate_image(image: Image, masks, realism, saliency):
     temp_images = []
     with torch.inference_mode():
         for result in trainer.forward_allperm_hr():
-            saliency *= 1-(result[2].item()) if args.result_for_decrease else result[2].item(); temp_saliencies.append(saliency)
-            realism *= result[1].item(); temp_realisms.append(realism)
+            saliency = 1-(result[2].item()) if args.result_for_decrease else result[2].item(); temp_saliencies.append(saliency)
+            realism = result[1].item(); temp_realisms.append(realism)
 
             edited = (result[6][0,].transpose(1,2,0) * 255).astype('uint8')
             temp_images.append(edited.copy())
     del datasets, dataloader_val, data
     gc.collect()
     torch.cuda.empty_cache()
-    results = []
-    saliencies = []
-    realisms = []
-    for i, img in enumerate(temp_images):
-        if masks:
-            ret_image, ret_saliency, ret_realism = modulate_image(Image.fromarray(img, "RGB"), copy.deepcopy(masks), temp_realisms[i], temp_saliencies[i])
-            results.extend(ret_image)
-            saliencies.extend(ret_saliency)
-            realisms.extend(ret_realism)
-        else:
-            results.append(img)
-            saliencies.append(temp_saliencies[i])
-            realisms.append(temp_realisms[i])
 
-    return results, saliencies, realisms
+    best_realism_idx = np.argmax(temp_realisms)
+    best_saliency_idx = np.argmax(temp_saliencies)
+
+    best_realism = temp_images[best_realism_idx]
+    best_saliency = temp_images[best_saliency_idx]
+
+    if masks:
+        ret_realism_img, _ = modulate_image(Image.fromarray(best_realism, "RGB"), copy.deepcopy(masks))
+        _, ret_saliency_img = modulate_image(Image.fromarray(best_saliency, "RGB"), copy.deepcopy(masks))
+    else:
+        ret_realism_img = best_realism
+        ret_saliency_img = best_saliency
+
+    return ret_realism_img, ret_saliency_img
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]= ", ".join(map(str, args.gpu_ids))
@@ -126,35 +123,11 @@ if __name__ == '__main__':
         mask_root = os.path.join(args.mask_root, image_name.split('.')[0])
         image: Image = Image.open(image_path).convert("RGB")
         mask_paths = [os.path.join(mask_root, f) for f in os.listdir(mask_root) if f.endswith('.jpg')]
-        results, saliencies, realisms = modulate_image(image, mask_paths, 1.0, 1.0)
-
-        # Do the pick
-        picked_list = []
-        for pick_strategy in pick_strategy_list:
-            if pick_strategy == 'random':
-                picked_idx = random.randint(0, len(saliencies)-1)
-            elif pick_strategy == 'best_realism':
-                picked_idx = np.argmin(realisms)
-            elif pick_strategy == 'best_saliency':
-                if args.result_for_decrease == 1:
-                    picked_idx = np.argmin(saliencies)
-                else:
-                    picked_idx = np.argmax(saliencies)
-
-
-            picked_list.append(picked_idx)
-            # save picked result
-            picked = results[picked_idx]
-            picked = cv2.cvtColor(picked, cv2.COLOR_RGB2BGR)
-            picked_name = os.path.join('picked_{}'.format(pick_strategy),image_name)
-            cv2.imwrite(os.path.join(result_root, picked_name), picked)
-
-        #save all results
-        for idx, result in enumerate(results):
-            result_name = os.path.join('all', image_name.split('.')[0] + '_{}.jpg'.format(idx))
-            result = cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(os.path.join(result_root, result_name), result)
-
+        best_realism_img, best_saliency_img = modulate_image(image, mask_paths)
+        best_realism_img = cv2.cvtColor(best_realism_img, cv2.COLOR_RGB2BGR)
+        best_saliency_img= cv2.cvtColor(best_saliency_img, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(os.path.join(result_root, 'best_realism', image_name), best_realism_img)
+        cv2.imwrite(os.path.join(result_root, 'best_saliency', image_name), best_saliency_img)
 
 
 
