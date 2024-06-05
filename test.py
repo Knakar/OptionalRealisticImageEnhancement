@@ -53,8 +53,8 @@ def modulate_image(image: Image, masks, realism, saliency):
     temp_images = []
     with torch.inference_mode():
         for result in trainer.forward_allperm_hr():
-            saliency *= 1-(result[2].item()) if args.result_for_decrease else result[2].item(); temp_saliencies.append(saliency)
-            realism *= result[1].item(); temp_realisms.append(realism)
+            saliency += 1-(result[2].item()) if args.result_for_decrease else result[2].item(); temp_saliencies.append(saliency)
+            realism += result[1].item(); temp_realisms.append(realism)
 
             edited = (result[6][0,].transpose(1,2,0) * 255).astype('uint8')
             temp_images.append(edited.copy())
