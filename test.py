@@ -65,14 +65,18 @@ def modulate_image(image: Image, masks):
     best_realism = temp_images[best_realism_idx]
     best_saliency = temp_images[best_saliency_idx]
 
+    realisms = [temp_realisms[best_realism_idx]]
+    saliencies = [temp_saliencies[best_saliency_idx]]
     if masks:
-        ret_realism_img, _ = modulate_image(Image.fromarray(best_realism, "RGB"), copy.deepcopy(masks))
-        _, ret_saliency_img = modulate_image(Image.fromarray(best_saliency, "RGB"), copy.deepcopy(masks))
+        ret_realism_img, _, ret_realism, _ = modulate_image(Image.fromarray(best_realism, "RGB"), copy.deepcopy(masks))
+        _, ret_saliency_img , _, ret_saliency = modulate_image(Image.fromarray(best_saliency, "RGB"), copy.deepcopy(masks))
+        realisms.extend(ret_realism)
+        saliencies.extend(ret_saliency)
     else:
         ret_realism_img = best_realism
         ret_saliency_img = best_saliency
 
-    return ret_realism_img, ret_saliency_img
+    return ret_realism_img, ret_saliency_img, realisms, saliencies
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]= ", ".join(map(str, args.gpu_ids))
@@ -123,11 +127,12 @@ if __name__ == '__main__':
         mask_root = os.path.join(args.mask_root, image_name.split('.')[0])
         image: Image = Image.open(image_path).convert("RGB")
         mask_paths = [os.path.join(mask_root, f) for f in os.listdir(mask_root) if f.endswith('.jpg')]
-        best_realism_img, best_saliency_img = modulate_image(image, mask_paths)
+        best_realism_img, best_saliency_img, realisms, saliencies = modulate_image(image, mask_paths)
+        print("realism:", "_".join(map(str, realisms)), "\nsaliency:", "_".join(map(str, saliencies)))
         best_realism_img = cv2.cvtColor(best_realism_img, cv2.COLOR_RGB2BGR)
         best_saliency_img= cv2.cvtColor(best_saliency_img, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(os.path.join(result_root, 'best_realism', image_name), best_realism_img)
-        cv2.imwrite(os.path.join(result_root, 'best_saliency', image_name), best_saliency_img)
+        cv2.imwrite(os.path.join(result_root, 'picked_best_realism', f'{image_name.split(".")[0]}_{"_".join(map(str, realisms))}.jpg'), best_realism_img)
+        cv2.imwrite(os.path.join(result_root, 'picked_best_saliency', f'{image_name.split(".")[0]}_{"_".join(map(str, saliencies))}.jpg'), best_saliency_img)
 
 
 
