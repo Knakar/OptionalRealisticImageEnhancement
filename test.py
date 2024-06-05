@@ -136,11 +136,7 @@ if __name__ == '__main__':
             elif pick_strategy == 'best_realism':
                 picked_idx = np.argmin(realisms)
             elif pick_strategy == 'best_saliency':
-                if args.result_for_decrease == 1:
-                    picked_idx = np.argmin(saliencies)
-                else:
-                    picked_idx = np.argmax(saliencies)
-
+                picked_idx = np.argmax(saliencies)
 
             picked_list.append(picked_idx)
             # save picked result
