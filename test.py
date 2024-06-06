@@ -6,13 +6,14 @@ from argumentsparser import args
 import random
 import copy
 from PIL import Image
+from anytree import Node, findall, Walker, RenderTree
 import gc
 
 from model.editnettrainer import EditNetTrainer
 from dataloader.anydataset import AnyDataset
 
 
-def modulate_image(image: Image, masks, realism, saliency):
+def modulate_image(image: Image, masks, realism, saliency, realism_history:Node=None, saliency_history:Node=None):
     """
     Modulate the image with masks, and calculate realisms, and saliencies.
 
@@ -27,6 +28,10 @@ def modulate_image(image: Image, masks, realism, saliency):
         List[float]: The modulated realisms.
         List[float]: The modulated saliencies.
     """
+    if realism_history is None or saliency_history is None:
+        realism_history = Node("root")
+        saliency_history = Node("root")
+
     mask_path = masks.pop()
     mask_name = mask_path.split('/')[-1]
     mask = Image.open(mask_path)
@@ -50,12 +55,17 @@ def modulate_image(image: Image, masks, realism, saliency):
     trainer.setinput_hr(data)
     temp_saliencies = []
     temp_realisms = []
+    temp_saliencies_history = []
+    temp_realisms_history = []
     temp_images = []
     with torch.inference_mode():
         for result in trainer.forward_allperm_hr():
-            saliency += 1-(result[2].item()) if args.result_for_decrease else result[2].item(); temp_saliencies.append(saliency)
-            realism += result[1].item(); temp_realisms.append(realism)
-
+            generated_saliency = 1 - (result[2].item()) if args.result_for_decrease else result[2].item()
+            temp_saliencies.append(saliency + generated_saliency)
+            generated_realism = result[1].item()
+            temp_realisms.append(realism + generated_realism)
+            temp_saliencies_history.append(Node(generated_saliency, parent=saliency_history))
+            temp_realisms_history.append(Node(generated_realism, parent=realism_history))
             edited = (result[6][0,].transpose(1,2,0) * 255).astype('uint8')
             temp_images.append(edited.copy())
     del datasets, dataloader_val, data
@@ -66,7 +76,9 @@ def modulate_image(image: Image, masks, realism, saliency):
     realisms = []
     for i, img in enumerate(temp_images):
         if masks:
-            ret_image, ret_saliency, ret_realism = modulate_image(Image.fromarray(img, "RGB"), copy.deepcopy(masks), temp_realisms[i], temp_saliencies[i])
+            ret_image, ret_saliency, ret_realism, _, _ = (
+                modulate_image(Image.fromarray(img, "RGB"), copy.deepcopy(masks),
+                                    temp_realisms[i], temp_saliencies[i], temp_saliencies_history[i], temp_realisms_history[i]))
             results.extend(ret_image)
             saliencies.extend(ret_saliency)
             realisms.extend(ret_realism)
@@ -75,7 +87,7 @@ def modulate_image(image: Image, masks, realism, saliency):
             saliencies.append(temp_saliencies[i])
             realisms.append(temp_realisms[i])
 
-    return results, saliencies, realisms
+    return results, saliencies, realisms, realism_history, saliency_history
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]= ", ".join(map(str, args.gpu_ids))
@@ -126,27 +138,46 @@ if __name__ == '__main__':
         mask_root = os.path.join(args.mask_root, image_name.split('.')[0])
         image: Image = Image.open(image_path).convert("RGB")
         mask_paths = [os.path.join(mask_root, f) for f in os.listdir(mask_root) if f.endswith('.jpg')]
-        results, saliencies, realisms = modulate_image(image, mask_paths, 1.0, 1.0)
+        results, saliencies, realisms, saliency_history, realism_history = modulate_image(image, mask_paths, 0.0, 0.0)
+
+        # search leaves
+        saliency_leaves = list(findall(saliency_history, filter_=lambda node: not node.children))
+        realism_leaves = list(findall(realism_history, filter_=lambda node: not node.children))
 
         # Do the pick
         picked_list = []
         for pick_strategy in pick_strategy_list:
+            # Find the history of the evaluation score in the History Tree
+            walker = Walker()
+
             if pick_strategy == 'random':
                 picked_idx = random.randint(0, len(saliencies)-1)
+                image_evaluation_history = ""
             elif pick_strategy == 'best_realism':
                 picked_idx = np.argmin(realisms)
+                # saliency history
+                _, saliency_history_path, path_down = walker.walk(saliency_history, saliency_leaves[picked_idx])
+                saliency_history_path  = [saliency_history_path] + list(path_down)
+                image_evaluation_history = "_".join([str(node.name) for node in saliency_history_path][1:])
             elif pick_strategy == 'best_saliency':
                 picked_idx = np.argmax(saliencies)
+                # realism history
+                _, realism_history_path, path_down = walker.walk(realism_history, realism_leaves[picked_idx])
+                realism_history_path = list(realism_history_path) + list(path_down)
+                image_evaluation_history = "_".join([str(node.name) for node in realism_history_path][1:])
 
             picked_list.append(picked_idx)
             # save picked result
             picked = results[picked_idx]
             picked = cv2.cvtColor(picked, cv2.COLOR_RGB2BGR)
-            picked_name = os.path.join('picked_{}'.format(pick_strategy),image_name)
+            picked_name =  f"{image_name.split('.')[0]}_{image_evaluation_history}.jpg"
             cv2.imwrite(os.path.join(result_root, picked_name), picked)
 
         #save all results
         for idx, result in enumerate(results):
+            saliency = saliencies[idx]
+            realism = realisms[idx]
+
             result_name = os.path.join('all', image_name.split('.')[0] + '_{}.jpg'.format(idx))
             result = cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
             cv2.imwrite(os.path.join(result_root, result_name), result)
