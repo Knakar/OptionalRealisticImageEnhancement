@@ -152,7 +152,7 @@ if __name__ == '__main__':
 
             if pick_strategy == 'random':
                 picked_idx = random.randint(0, len(saliencies)-1)
-                image_evaluation_history = ""
+                image_evaluation_history = "random"
             elif pick_strategy == 'best_realism':
                 picked_idx = np.argmin(realisms)
                 # saliency history
@@ -163,7 +163,7 @@ if __name__ == '__main__':
                 picked_idx = np.argmax(saliencies)
                 # realism history
                 _, realism_history_path, path_down = walker.walk(realism_history, realism_leaves[picked_idx])
-                realism_history_path = list(realism_history_path) + list(path_down)
+                realism_history_path = [realism_history_path] + list(path_down)
                 image_evaluation_history = "_".join([str(node.name) for node in realism_history_path][1:])
 
             picked_list.append(picked_idx)
@@ -171,7 +171,7 @@ if __name__ == '__main__':
             picked = results[picked_idx]
             picked = cv2.cvtColor(picked, cv2.COLOR_RGB2BGR)
             picked_name =  f"{image_name.split('.')[0]}_{image_evaluation_history}.jpg"
-            cv2.imwrite(os.path.join(result_root, picked_name), picked)
+            cv2.imwrite(os.path.join(result_root,f"picked_{pick_strategy}", picked_name), picked)
 
         #save all results
         for idx, result in enumerate(results):
