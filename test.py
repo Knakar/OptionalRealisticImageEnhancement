@@ -59,7 +59,7 @@ def modulate_image(image: Image, masks):
     gc.collect()
     torch.cuda.empty_cache()
 
-    best_realism_idx = np.argmax(temp_realisms)
+    best_realism_idx = np.argmin(temp_realisms)
     best_saliency_idx = np.argmax(temp_saliencies)
 
     best_realism = temp_images[best_realism_idx]
