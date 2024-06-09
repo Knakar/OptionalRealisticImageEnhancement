@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 import os
 import cv2
 import numpy as np
@@ -11,21 +12,20 @@ import gc
 from model.editnettrainer import EditNetTrainer
 from dataloader.anydataset import AnyDataset
 
+from model.discriminator import VOTEGAN
+from utils.networkutils import init_net, loadmodelweights
 
-def modulate_image(image: Image, masks, realism, saliency):
+
+def modulate_image(image: Image, masks):
     """
     Modulate the image with masks, and calculate realisms, and saliencies.
 
     Args:
         image (Image): The image.
         masks (List[np.ndarray]): The masks.
-        realism (float): The realism.
-        saliency (float): The saliency.
 
     Returns:
         List[np.ndarray]: The modulated images.
-        List[float]: The modulated realisms.
-        List[float]: The modulated saliencies.
     """
     mask_path = masks.pop()
     mask_name = mask_path.split('/')[-1]
@@ -48,34 +48,23 @@ def modulate_image(image: Image, masks, realism, saliency):
     else:
         trainer = None
     trainer.setinput_hr(data)
-    temp_saliencies = []
-    temp_realisms = []
     temp_images = []
     with torch.inference_mode():
         for result in trainer.forward_allperm_hr():
-            saliency += 1-(result[2].item()) if args.result_for_decrease else result[2].item(); temp_saliencies.append(saliency)
-            realism += result[1].item(); temp_realisms.append(realism)
-
             edited = (result[6][0,].transpose(1,2,0) * 255).astype('uint8')
             temp_images.append(edited.copy())
     del datasets, dataloader_val, data
     gc.collect()
     torch.cuda.empty_cache()
     results = []
-    saliencies = []
-    realisms = []
     for i, img in enumerate(temp_images):
         if masks:
-            ret_image, ret_saliency, ret_realism = modulate_image(Image.fromarray(img, "RGB"), copy.deepcopy(masks), temp_realisms[i], temp_saliencies[i])
+            ret_image = modulate_image(Image.fromarray(img, "RGB"), copy.deepcopy(masks))
             results.extend(ret_image)
-            saliencies.extend(ret_saliency)
-            realisms.extend(ret_realism)
         else:
             results.append(img)
-            saliencies.append(temp_saliencies[i])
-            realisms.append(temp_realisms[i])
 
-    return results, saliencies, realisms
+    return results
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]= ", ".join(map(str, args.gpu_ids))
@@ -117,32 +106,95 @@ if __name__ == '__main__':
     attenuation_trainer.setEval()
     amplification_trainer.setEval()
 
-    pick_strategy_list = ['random', 'best_realism' , 'best_saliency']
+    pick_strategy_list = ['random', 'best_realism']
     for pick_strategy in pick_strategy_list:
         os.makedirs(os.path.join(result_root, 'picked_{}'.format(pick_strategy)), exist_ok=True)
+
+    # initialize predict model
+    realism_net = init_net(VOTEGAN(args), args.gpu_ids)
+
+    predict_device = torch.device('cuda:{}'.format(args.gpu_ids[0])) if args.gpu_ids else torch.device('cpu')
+    loadmodelweights(realism_net, 'bestmodels/realismnet.pth', predict_device)
+    realism_net.eval()
 
     for episode, image_name in enumerate(image_names):
         image_path = os.path.join(args.rgb_root,image_name.split('.')[0]+'.jpg')
         mask_root = os.path.join(args.mask_root, image_name.split('.')[0])
         image: Image = Image.open(image_path).convert("RGB")
         mask_paths = [os.path.join(mask_root, f) for f in os.listdir(mask_root) if f.endswith('.jpg')]
-        results, saliencies, realisms = modulate_image(image, mask_paths, 1.0, 1.0)
+        # get the overlapping mask
+        overlapping_mask = np.maximum.reduce([np.array(Image.open(mask_path)) for mask_path in mask_paths])
+        # generate the modulated image
+        results = modulate_image(image, mask_paths)
+        realisms = []
+        # before realism score
+        dataset_before_editing = AnyDataset(
+            args,
+            image,
+            Image.fromarray(overlapping_mask)
+        )
+        dataset_before_editing_val = torch.utils.data.DataLoader(
+            dataset_before_editing,
+            batch_size=1,
+            shuffle=False,
+            num_workers=1,
+            pin_memory=True,
+            drop_last=True
+        )
+        data_before_editing = next(iter(dataset_before_editing_val))
+
+        ## settings for predict realism
+        rgb = data_before_editing['rgb'].to(predict_device)
+        mask = data_before_editing['mask'].to(predict_device)
+        category = data_before_editing['category'].to(predict_device)
+        ishuman =  (category == 1).float()
+        input_data = torch.cat((rgb, mask), 1).to(predict_device)
+
+        before_D_value = realism_net(torch.cat(tuple((rgb, mask)), 1)).squeeze(1)
+        # predict the final realism score
+        for i, result_img in enumerate(results):
+            print(f"Evaluate the realism score ({i+1}/{len(results)})\t ----------->", end="\t")
+            dataset_after_editing = AnyDataset(
+                args,
+                Image.fromarray(result_img),
+                Image.fromarray(overlapping_mask)
+            )
+            dataset_after_editing_val = torch.utils.data.DataLoader(
+                dataset_after_editing,
+                batch_size=1,
+                shuffle=False,
+                num_workers=1,
+                pin_memory=True,
+                drop_last=True
+            )
+            data_after_editing = next(iter(dataset_after_editing_val))
+            result = data_after_editing['rgb'].to(predict_device)
+
+            # calculate the realism score
+            D_value = realism_net(torch.cat(tuple((result, mask)), 1)).squeeze(1)
+            realism_change = before_D_value - D_value
+            realism_component_human = (1+args.human_weight_gan * F.relu(realism_change))
+            realism_component_other = (1+F.relu(realism_change - args.beta_r))
+            realism_loss = ishuman.squeeze(1) * realism_component_human + (1-ishuman.squeeze(1)) * realism_component_other
+            realisms.append(realism_change.item())
+            del dataset_after_editing, dataset_after_editing_val, data_after_editing, result, D_value, realism_change, realism_component_human, realism_component_other, realism_loss
+            gc.collect()
+            torch.cuda.empty_cache()
+            print(realisms[-1])
 
         # Do the pick
         picked_list = []
         for pick_strategy in pick_strategy_list:
             if pick_strategy == 'random':
-                picked_idx = random.randint(0, len(saliencies)-1)
+                picked_idx = random.randint(0, len(results)-1)
             elif pick_strategy == 'best_realism':
                 picked_idx = np.argmin(realisms)
-            elif pick_strategy == 'best_saliency':
-                picked_idx = np.argmax(saliencies)
 
             picked_list.append(picked_idx)
             # save picked result
             picked = results[picked_idx]
             picked = cv2.cvtColor(picked, cv2.COLOR_RGB2BGR)
-            picked_name = os.path.join('picked_{}'.format(pick_strategy),image_name)
+            picked_name = os.path.join('picked_{}'.format(pick_strategy), f"{image_name.split('.')[0]}_{realisms[picked_idx]}.jpg")
             cv2.imwrite(os.path.join(result_root, picked_name), picked)
 
         #save all results
