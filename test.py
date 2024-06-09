@@ -10,10 +10,12 @@ from PIL import Image
 import gc
 
 from model.editnettrainer import EditNetTrainer
-from dataloader.anydataset import AnyDataset
+from dataloader.anydataset import AnyDataset, ResultDataset
 
 from model.discriminator import VOTEGAN
 from utils.networkutils import init_net, loadmodelweights
+
+import torch
 
 
 def modulate_image(image: Image, masks):
@@ -150,34 +152,28 @@ if __name__ == '__main__':
         ishuman =  (category == 1).float()
         input_data = torch.cat((rgb, mask), 1).to(predict_device)
 
-        before_D_value = realism_net(torch.cat(tuple((rgb, mask)), 1)).squeeze(1)
+        before_D_value = realism_net(torch.cat(tuple((rgb, mask)), 1)).squeeze(1).to(predict_device)
+        result_dataset = ResultDataset(args, results, Image.fromarray(overlapping_mask))
+        result_dataloader = torch.utils.data.DataLoader(
+            result_dataset,
+            batch_size=1,
+            shuffle=False,
+            num_workers=1,
+            pin_memory=True,
+            drop_last=True
+        )
         # predict the final realism score
-        for i, result_img in enumerate(results):
+        for i, data_after_editing in enumerate(result_dataloader):
             print(f"Evaluate the realism score ({i+1}/{len(results)})\t ----------->", end="\t")
-            dataset_after_editing = AnyDataset(
-                args,
-                Image.fromarray(result_img),
-                Image.fromarray(overlapping_mask)
-            )
-            dataset_after_editing_val = torch.utils.data.DataLoader(
-                dataset_after_editing,
-                batch_size=1,
-                shuffle=False,
-                num_workers=1,
-                pin_memory=True,
-                drop_last=True
-            )
-            data_after_editing = next(iter(dataset_after_editing_val))
             result = data_after_editing['rgb'].to(predict_device)
-
             # calculate the realism score
-            D_value = realism_net(torch.cat(tuple((result, mask)), 1)).squeeze(1)
+            D_value = realism_net(torch.cat(tuple((result, mask)), 1)).squeeze(1).to(predict_device)
             realism_change = before_D_value - D_value
-            realism_component_human = (1+args.human_weight_gan * F.relu(realism_change))
-            realism_component_other = (1+F.relu(realism_change - args.beta_r))
-            realism_loss = ishuman.squeeze(1) * realism_component_human + (1-ishuman.squeeze(1)) * realism_component_other
+            #realism_component_human = (1+args.human_weight_gan * F.relu(realism_change))
+            #realism_component_other = (1+F.relu(realism_change - args.beta_r))
+            #realism_loss = ishuman.squeeze(1) * realism_component_human + (1-ishuman.squeeze(1)) * realism_component_other
             realisms.append(realism_change.item())
-            del dataset_after_editing, dataset_after_editing_val, data_after_editing, result, D_value, realism_change, realism_component_human, realism_component_other, realism_loss
+            del result, D_value, realism_change
             gc.collect()
             torch.cuda.empty_cache()
             print(realisms[-1])
