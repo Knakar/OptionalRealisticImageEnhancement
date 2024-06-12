@@ -10,7 +10,8 @@ from PIL import Image
 import gc
 
 from model.editnettrainer import EditNetTrainer
-from dataloader.anydataset import AnyDataset, ResultDataset
+from dataloader.anydataset import AnyDataset
+from dataloader.resultdataset import ResultDataset
 
 from model.discriminator import VOTEGAN
 from utils.networkutils import init_net, loadmodelweights
