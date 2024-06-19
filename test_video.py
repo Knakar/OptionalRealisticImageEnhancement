@@ -86,7 +86,8 @@ if len(args.gpu_ids) > 0:
 
 if __name__ == '__main__':
 
-
+    result_root = args.result_root
+    os.makedirs(os.path.join(result_root), exist_ok=True)
     # amplification trainer
     setattr(args, "init_parameternet_weights", args.init_amplify_weights)
     args.result_for_decrease = 0
@@ -125,8 +126,11 @@ if __name__ == '__main__':
         for kind in mask_kind:
             mask_paths.append([path for path in os.listdir(os.path.join(video_mask_path, kind)) if path.endswith('.png')])
         mask_paths_per_frame = np.array(mask_paths).T.tolist()
-
+        # initialize the video writer
+        output_codec = cv2.VideoWriter_fourcc(*'MJPG')
+        output_writer = cv2.VideoWriter(os.path.join(result_root, f"{video_title}.avi"), output_codec, 15, Image.open(frame_paths[0]).size, True)
         for j, frame in enumerate(frame_paths):
+            print(f"video: {video_title} frame: {j+1}/{len(frame_paths)}")
             # calculate the before realism score
             image_path = os.path.join(video_root_path, frame)
             mask_paths = mask_paths_per_frame[j]
@@ -159,56 +163,11 @@ if __name__ == '__main__':
             for result in result_dataloader:
                 rgb = result['rgb'].to(predict_device)
                 mask = result['mask'].to(predict_device)
-                after_realism_score = realism_net((rgb, mask), 1).squeeze(1)
+                after_realism_score = realism_net((rgb, mask), 1).squeeze(1).to(predict_device)
                 realism_score = after_realism_score - before_realism_score
                 realisms.append(realism_score)
 
             # pick the best result
             picked_idx = np.argmin(realisms)
-            picked = results[picked_idx]
-
-
-
-    video_param = None
-    for frame,data in enumerate(dataloader_val):
-        mask_path = data['path'][0]
-        image_name =  mask_path.split('/')[-1].split('.')[0]+'.jpg'
-
-        print('({}/{})'.format(frame+1, len(dataloader_val)), '----->', image_name)
-        
-        trainer.setinput_hr(data)
-
-        sal_list = []
-        realism_list = []
-        result_list = []
-        param_list = []
-        with torch.inference_mode():
-            for result in trainer.forward_allperm_hr(video_param):
-                sal_list.append(result[2])
-                realism_list.append(result[1])
-                edited = (result[6][0,].transpose(1,2,0)[:,:,::-1] * 255).astype('uint8')
-                result_list.append(edited.copy())
-                param_list.append(result[9])
-
-        if video_param is None:
-            video_param = param_list[0]
-            print('Video param selected as params from the first frame')
-            
-
-        sal_list = [np.asscalar(item) for item in sal_list]
-        realism_list = [np.asscalar(item) for item in realism_list]
-
-        # Do the pick
-        picked_ind = 0
-        pick_strategy = 'first'
-        # save picked result
-        picked = result_list[picked_ind]
-        picked_name = os.path.join('picked_{}'.format(pick_strategy),image_name) 
-        cv2.imwrite(os.path.join(result_root, picked_name), picked)
-
-    
-                
-
-
-
-
+            picked = cv2.cvtColor(results[picked_idx], cv2.COLOR_RGB2BGR)
+            output_writer.write(picked)
