@@ -41,10 +41,9 @@ def modulate_image(image: Image, masks):
         drop_last=True
     )
     data = next(iter(dataloader_val))
-    #TODO cahange to directory namae detaction form file name
     if mask_kind.endswith("amplification"):
         trainer = amplification_trainer
-    elif mask_name.endswith("attenuation"):
+    elif mask_kind.endswith("attenuation"):
         trainer = attenuation_trainer
     else:
         trainer = None
@@ -76,17 +75,20 @@ random.seed(args.seed)
 
 str_ids = args.gpu_ids.split(',')
 args.gpu_ids = []
+num_gpu = 0
 for str_id in str_ids:
     id = int(str_id)
     if id >= 0:
-        args.gpu_ids.append(id)
+        args.gpu_ids.append(num_gpu)
+        num_gpu+=1
 if len(args.gpu_ids) > 0:
+    print(args.gpu_ids[0])
     torch.cuda.set_device(args.gpu_ids[0])
 
 
 if __name__ == '__main__':
 
-    result_root = args.result_root
+    result_root = args.result_path
     os.makedirs(os.path.join(result_root), exist_ok=True)
     # amplification trainer
     setattr(args, "init_parameternet_weights", args.init_amplify_weights)
@@ -109,7 +111,7 @@ if __name__ == '__main__':
     for pick_strategy in pick_strategy_list:
         os.makedirs(os.path.join(result_root, 'picked_{}'.format(pick_strategy)), exist_ok=True)
 
-    video_names = [path for path in os.listdir(args.rgb_root) if os.path.isdir(path)]
+    video_names = [path for path in os.listdir(args.rgb_root) if os.path.isdir(os.path.join(args.rgb_root, path))]
 
     realism_net = init_net(VOTEGAN(args), args.gpu_ids)
     predict_device = torch.device('cuda:{}'.format(args.gpu_ids[0])) if args.gpu_ids else torch.device('cpu')
@@ -121,14 +123,14 @@ if __name__ == '__main__':
         video_mask_path = os.path.join(args.mask_root, video_title)
         frame_paths = sorted([path for path in os.listdir(video_root_path) if path.endswith('.jpg')])
 
-        mask_kind = sorted([path for path in os.listdir(video_mask_path) if os.path.isdir(path)])
+        mask_kind = sorted([path for path in os.listdir(video_mask_path) if os.path.isdir(os.path.join(video_mask_path, path))])
         mask_paths = []
         for kind in mask_kind:
-            mask_paths.append([path for path in os.listdir(os.path.join(video_mask_path, kind)) if path.endswith('.png')])
+            mask_paths.append([os.path.join(video_mask_path, kind,path) for path in os.listdir(os.path.join(video_mask_path, kind)) if path.endswith('.jpg')])
         mask_paths_per_frame = np.array(mask_paths).T.tolist()
         # initialize the video writer
         output_codec = cv2.VideoWriter_fourcc(*'MJPG')
-        output_writer = cv2.VideoWriter(os.path.join(result_root, f"{video_title}.avi"), output_codec, 15, Image.open(frame_paths[0]).size, True)
+        output_writer = cv2.VideoWriter(os.path.join(result_root, f"{video_title}.avi"), output_codec, 5, Image.open(os.path.join(video_root_path, frame_paths[0])).size, True)
         for j, frame in enumerate(frame_paths):
             print(f"video: {video_title} frame: {j+1}/{len(frame_paths)}")
             # calculate the before realism score
@@ -140,6 +142,7 @@ if __name__ == '__main__':
             overlapping_mask = np.maximum.reduce([np.array(Image.open(mask_path)) for mask_path in mask_paths])
             # generate the modulated image
             results = modulate_image(image, mask_paths)
+            torch.cuda.empty_cache()
             # predict before realism score
             data_before_editing = next(iter(torch.utils.data.DataLoader(
                 AnyDataset(args, image, Image.fromarray(overlapping_mask)),
@@ -150,7 +153,8 @@ if __name__ == '__main__':
                 drop_last=True)))
             rgb = data_before_editing['rgb'].to(predict_device)
             mask = data_before_editing['mask'].to(predict_device)
-            before_realism_score = realism_net((rgb, mask), 1).squeeze(1)
+            before_realism_score = realism_net(torch.cat(tuple((rgb, mask)), 1)).squeeze(1)
+            torch.cuda.empty_cache()
             result_dataloader = torch.utils.data.DataLoader(
                 ResultDataset(args, results, Image.fromarray(overlapping_mask)),
                 batch_size=1,
@@ -163,11 +167,14 @@ if __name__ == '__main__':
             for result in result_dataloader:
                 rgb = result['rgb'].to(predict_device)
                 mask = result['mask'].to(predict_device)
-                after_realism_score = realism_net((rgb, mask), 1).squeeze(1).to(predict_device)
+                after_realism_score = realism_net(torch.cat(tuple((rgb, mask)), 1)).squeeze(1)
+                torch.cuda.empty_cache()
+                before_realism_score = before_realism_score.to(predict_device)
+                after_realism_score = after_realism_score.to(predict_device)
                 realism_score = after_realism_score - before_realism_score
                 realisms.append(realism_score)
-
             # pick the best result
             picked_idx = np.argmin(realisms)
             picked = cv2.cvtColor(results[picked_idx], cv2.COLOR_RGB2BGR)
             output_writer.write(picked)
+            torch.cuda.empty_cache()
