@@ -50,21 +50,29 @@ def modulate_image(image: Image, masks):
 
     trainer.setinput_hr(data)
     temp_images = []
+    temp_saliency = []
     with torch.inference_mode():
         for result in trainer.forward_allperm_hr():
+            saliency = -(result[2].item())if args.result_for_decrease else result[2].item(); temp_saliency.append(saliency)
             edited = (result[6][0,].transpose(1,2,0) * 255).astype('uint8')
             temp_images.append(edited.copy())
     del datasets, dataloader_val, data
     torch.cuda.empty_cache()
-    results = []
+    best_saliency_idx = np.argmax(temp_saliency)
+    best_saliency = temp_images[best_saliency_idx]
+    results_realism = []
+    result_saliency = None
     for i, img in enumerate(temp_images):
         if masks:
-            ret_image = modulate_image(Image.fromarray(img, "RGB"), copy.deepcopy(masks))
-            results.extend(ret_image)
+            ret_images, ret_sal_image= modulate_image(Image.fromarray(img, "RGB"), copy.deepcopy(masks))
+            if i == best_saliency:
+                result_saliency = ret_sal_image
+            results_realism.extend(ret_images)
         else:
-            results.append(img)
+            results_realism.append(img)
+            result_saliency = best_saliency
 
-    return results
+    return results_realism, result_saliency
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu_ids
@@ -87,7 +95,7 @@ if len(args.gpu_ids) > 0:
 
 
 if __name__ == '__main__':
-
+    print("start")
     result_root = args.result_path
     os.makedirs(os.path.join(result_root), exist_ok=True)
     # amplification trainer
@@ -126,11 +134,13 @@ if __name__ == '__main__':
         mask_kind = sorted([path for path in os.listdir(video_mask_path) if os.path.isdir(os.path.join(video_mask_path, path))])
         mask_paths = []
         for kind in mask_kind:
-            mask_paths.append([os.path.join(video_mask_path, kind,path) for path in os.listdir(os.path.join(video_mask_path, kind)) if path.endswith('.jpg')])
+            mask_paths.append(sorted([os.path.join(video_mask_path, kind,path) for path in os.listdir(os.path.join(video_mask_path, kind)) if path.endswith('.jpg')]))
         mask_paths_per_frame = np.array(mask_paths).T.tolist()
+        print(mask_paths_per_frame)
         # initialize the video writer
         output_codec = cv2.VideoWriter_fourcc(*'MJPG')
-        output_writer = cv2.VideoWriter(os.path.join(result_root, f"{video_title}.avi"), output_codec, 5, Image.open(os.path.join(video_root_path, frame_paths[0])).size, True)
+        output_writer_realism = cv2.VideoWriter(os.path.join(result_root, f"{video_title}_realism.avi"), output_codec, 5, Image.open(os.path.join(video_root_path, frame_paths[0])).size, True)
+        output_writer_saliency = cv2.VideoWriter(os.path.join(result_root, f"{video_title}_saliency.avi"), output_codec, 5, Image.open(os.path.join(video_root_path, frame_paths[0])).size, True)
         for j, frame in enumerate(frame_paths):
             print(f"video: {video_title} frame: {j+1}/{len(frame_paths)}")
             # calculate the before realism score
@@ -141,7 +151,7 @@ if __name__ == '__main__':
             # get the overlapping mask
             overlapping_mask = np.maximum.reduce([np.array(Image.open(mask_path)) for mask_path in mask_paths])
             # generate the modulated image
-            results = modulate_image(image, mask_paths)
+            results, saliency_result = modulate_image(image, mask_paths)
             torch.cuda.empty_cache()
             # predict before realism score
             data_before_editing = next(iter(torch.utils.data.DataLoader(
@@ -171,10 +181,13 @@ if __name__ == '__main__':
                 torch.cuda.empty_cache()
                 before_realism_score = before_realism_score.to(predict_device)
                 after_realism_score = after_realism_score.to(predict_device)
-                realism_score = after_realism_score - before_realism_score
+                realism_score = (after_realism_score - before_realism_score).cpu().detach()
                 realisms.append(realism_score)
             # pick the best result
-            picked_idx = np.argmin(realisms)
-            picked = cv2.cvtColor(results[picked_idx], cv2.COLOR_RGB2BGR)
-            output_writer.write(picked)
+            realisms = torch.cat(realisms).numpy()
+            picked_realism_idx = np.argmin(realisms)
+            picked_realism = cv2.cvtColor(results[picked_realism_idx], cv2.COLOR_RGB2BGR)
+            picked_saliency = cv2.cvtColor(saliency_result, cv2.COLOR_RGB2BGR)
+            output_writer_realism.write(picked_realism)
+            output_writer_saliency.write(picked_saliency)
             torch.cuda.empty_cache()
