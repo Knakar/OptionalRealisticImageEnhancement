@@ -65,7 +65,7 @@ def modulate_image(image: Image, masks):
     for i, img in enumerate(temp_images):
         if masks:
             ret_images, ret_sal_image= modulate_image(Image.fromarray(img, "RGB"), copy.deepcopy(masks))
-            if i == best_saliency:
+            if i == best_saliency_idx:
                 result_saliency = ret_sal_image
             results_realism.extend(ret_images)
         else:
