@@ -62,17 +62,20 @@ def modulate_image(image: Image, masks):
     best_saliency = temp_images[best_saliency_idx]
     results_realism = []
     result_saliency = None
+    saliency = 0
     for i, img in enumerate(temp_images):
         if masks:
-            ret_images, ret_sal_image= modulate_image(Image.fromarray(img, "RGB"), copy.deepcopy(masks))
+            ret_images, ret_sal_image, ret_saliency = modulate_image(Image.fromarray(img, "RGB"), copy.deepcopy(masks))
             if i == best_saliency_idx:
                 result_saliency = ret_sal_image
+                saliency +=  ret_saliency
             results_realism.extend(ret_images)
         else:
             results_realism.append(img)
             result_saliency = best_saliency
+            saliency += temp_saliency[best_saliency_idx]
 
-    return results_realism, result_saliency
+    return results_realism, result_saliency, saliency
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu_ids
@@ -136,7 +139,8 @@ if __name__ == '__main__':
         for kind in mask_kind:
             mask_paths.append(sorted([os.path.join(video_mask_path, kind,path) for path in os.listdir(os.path.join(video_mask_path, kind)) if path.endswith('.jpg')]))
         mask_paths_per_frame = np.array(mask_paths).T.tolist()
-        print(mask_paths_per_frame)
+        realism_sum = 0.0
+        saliency_sum = 0.0
         # initialize the video writer
         output_codec = cv2.VideoWriter_fourcc(*'MJPG')
         output_writer_realism = cv2.VideoWriter(os.path.join(result_root, f"{video_title}_realism.avi"), output_codec, 5, Image.open(os.path.join(video_root_path, frame_paths[0])).size, True)
@@ -151,7 +155,7 @@ if __name__ == '__main__':
             # get the overlapping mask
             overlapping_mask = np.maximum.reduce([np.array(Image.open(mask_path)) for mask_path in mask_paths])
             # generate the modulated image
-            results, saliency_result = modulate_image(image, mask_paths)
+            results, saliency_result, saliency= modulate_image(image, mask_paths)
             torch.cuda.empty_cache()
             # predict before realism score
             data_before_editing = next(iter(torch.utils.data.DataLoader(
@@ -186,8 +190,14 @@ if __name__ == '__main__':
             # pick the best result
             realisms = torch.cat(realisms).numpy()
             picked_realism_idx = np.argmin(realisms)
+            realism_sum += realisms[picked_realism_idx]
+            saliency_sum += saliency
             picked_realism = cv2.cvtColor(results[picked_realism_idx], cv2.COLOR_RGB2BGR)
             picked_saliency = cv2.cvtColor(saliency_result, cv2.COLOR_RGB2BGR)
             output_writer_realism.write(picked_realism)
             output_writer_saliency.write(picked_saliency)
             torch.cuda.empty_cache()
+        realism_avg = realism_sum / len(frame_paths)
+        saliency_avg = saliency_sum / len(frame_paths)
+        print(f"Realism  avg:\t", realism_avg)
+        print(f"Saliency avg:\t", saliency_avg)
