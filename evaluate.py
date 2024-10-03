@@ -1,3 +1,4 @@
+import wandb
 from torchvision.transforms.functional import resize as Tresize
 import torch
 from PIL import Image
@@ -68,7 +69,34 @@ if __name__ == "__main__":
     parser.add_argument("--mask", required=True)
     parser.add_argument('--crop_size', type=int, default=384)
     parser.add_argument('--load_size', type=int, default=384)
-
+    parser.add_argument('--wandb', action='store_true', default=False)
     args = parser.parse_args()
+    if args.wandb:
+        wandb.init(
+            project= "RealisticImageEnhancement-eval",
+            config={
+                "before": "normal",
+                "after": "no shadow restored",
+                "type": "amplify -> shadow removal",
+                "image": "test-2-low.jpg",
+                "opts": vars(args)
+            }
+        )
     realism_change, saliency_change = calculate_realism(args, args.before, args.after, args.mask)
+    """
+    realism change:
+    before - after
+        > 0: + :bad
+        < 0: - :good
+    
+    saliency change:
+    after - before 
+        > 0: + : good
+        < 0: + : bad
+    """
+    if args.wandb:
+	    wandb.log({
+	        "realism change": realism_change,
+        	"saliency change": saliency_change,
+	    })
     print(f"Realism change:\t\t {realism_change.item()}\nSaliency change:\t {saliency_change.item()}")
